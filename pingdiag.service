@@ -1,0 +1,11 @@
+[Unit]
+Description=PingDiag systemd service.
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/bin/bash /usr/sbin/pingdiag
+
+[Install]
+WantedBy=multi-user.target

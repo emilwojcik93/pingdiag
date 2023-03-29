@@ -1,0 +1,97 @@
+#/bin/bash
+
+log_file=ping.log
+err_log_file=ping.error.log
+#If loop is enabled then stamps has to be within this loop
+#timestamp=`date +"%F-%T"`
+#datestamp=`date +"%F"`
+log_pwd=/var/log/pingdiag
+
+dns1=
+dns2=
+dns3=8.8.8.8
+dns4=8.8.4.4
+
+#wan_addr=`wget -q -O - http://icanhazip.com/ | tail`
+wan_addr=
+#lan_gw=`/sbin/ip route | awk '/default/ { print $3 }'`
+lan_gw=
+far_gw=
+
+priv_test_urls="\
+$lan_gw \
+$wan_addr \
+$far_gw \
+$dns1 \
+$dns2 \
+$dns3 \
+$dns4 \
+"
+
+pub_test_urls="\
+# example \
+# example2 \
+"
+
+if [ ! -d "$log_pwd" ] 
+then
+    mkdir -p $log_pwd
+fi
+
+while :
+do
+    timestamp=`date +"%F-%T"`
+    datestamp=`date +"%F"`
+
+    if [ ! -d "$log_pwd/$datestamp" ]
+    then
+       mkdir -p $log_pwd/$datestamp
+    fi
+
+
+    for priv_test_url in $priv_test_urls; do
+    fping -t3 $priv_test_url &>/dev/null
+    if [ $? -eq 0 ]
+    then
+    :
+    #    Access Log
+    #    echo "Host "$priv_test_url" is available" | systemd-cat -t pingdiag -p info
+    #    journalctl -t pingdiag -p info | tail -n 1 | tee --append $log_pwd/$datestamp/$log_file &>/dev/null 2>&1
+    #    echo $timestamp" -- Host "$priv_test_url" is available" | tee --append $log_pwd/$datestamp/$log_file &>/dev/null 2>&1
+    else
+        echo "Host "$priv_test_url" is unavailable" | systemd-cat -t pingdiag -p err
+        journalctl -t pingdiag -p err | tail -n 1 | tee --append $log_pwd/$datestamp/$err_log_file &>/dev/null 2>&1
+    fi
+    done
+
+    for pub_test_url in $pub_test_urls; do
+    fping -t20 $pub_test_url &>/dev/null
+    if [ $? -eq 0 ]
+    then
+        :
+    #    Access Log
+        #echo "Host "$pub_test_url" is available" | systemd-cat -t pingdiag -p info
+        #journalctl -t pingdiag -p info | tail -n 1 | tee --append $log_pwd/$datestamp/$log_file &>/dev/null 2>&1
+        #echo $timestamp" -- Host "$pub_test_url" is available" | tee --append $log_pwd/$datestamp/$log_file &>/dev/null 2>&1
+    else
+        pgrep -a mtr | awk '{print $6}' | grep $pub_test_url &>/dev/null 2>&1
+        if [ $? -eq 0 ]
+        then
+            :
+            #echo "MTR for addr: "$pub_test_url" is still running" | systemd-cat -t pingdiag -p info
+        else
+            echo "Host "$pub_test_url" is unavailable" | systemd-cat -t pingdiag -p err
+            journalctl -t pingdiag -p err | tail -n 1 | tee --append $log_pwd/$datestamp/$err_log_file &>/dev/null 2>&1
+            mtr --report --report-cycles 10 $pub_test_url > $log_pwd/$datestamp/$timestamp'_'$pub_test_url.log &
+    #      if [ $? -ne 2 ]
+    #      then
+    #       echo "Remove "$log_pwd/$datestamp/$timestamp'_'$pub_test_url".log"  | systemd-cat -t pingdiag -p info
+    #       rm $log_pwd/$datestamp/$timestamp'_'$pub_test_url.log
+    #      fi
+        fi
+    fi
+    done
+
+    #sleep 1
+done
+
